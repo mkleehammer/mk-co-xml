@@ -1,6 +1,6 @@
 {
   "name": "mk-co-xml",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "repository": {
     "type": "git",
     "url": "git://github.com/mkleehammer/mk-co-xml.git"
@@ -12,12 +12,13 @@
     "debug": "^2.1.3"
   },
   "scripts": {
-    "test": "mocha --harmony",
-    "test-text": "mocha --harmony --reporter tap"
+    "test": "mocha --harmony test/test.js",
+    "test-text": "mocha --harmony --reporter tap test/test.js"
   },
   "author": "michael@kleehammer.com",
   "license": "MIT",
   "devDependencies": {
-    "co": "^4.5.4"
+    "co": "^4.5.4",
+    "commander": "^2.8.1"
   }
 }

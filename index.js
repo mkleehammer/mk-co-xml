@@ -31,9 +31,11 @@ function Parser() {
   // The name of the XML source, such as a filename, used in error messages.
 
   this.source = null;
-  // The readable stream we are parsing.
+  // The readable stream we are parsing.  This will be null if we are parsing
+  // directly from a string.  (The string is already in memory, so why would we
+  // want to wrap it in a fake stream?)
 
-  this.buffer = '';
+  this.buffer = null;
   // Data we've read from source.
 
   this.offset = 0;
@@ -42,8 +44,19 @@ function Parser() {
 
 Parser.prototype = Object.create(null, {
 
-  close: {
-    value: function close() {
+  remaining: {
+    get: function() {
+      return (this.buffer.length - this.offset);
+    }
+  },
+
+  _closeStream: {
+    // An internal function that closes the stream (to cleanup ASAP) but does
+    // not close the entire parser.  In particular, the buffer remains since we
+    // may still be reading from it.
+
+    value: function _closeStream() {
+
       if (this.source) {
         // The source may have autoclosed so ignore errors.
         var methods = ['end', 'close', 'destroy'];
@@ -53,10 +66,17 @@ Parser.prototype = Object.create(null, {
             break;
           }
         }
+
+        this.source = null;
       }
+    }
+  },
+
+  close: {
+    value: function close() {
+      this._closeStream();
 
       this.name   = null;
-      this.source = null;
       this.buffer = null;
       this.offset = 0;
     }
@@ -99,7 +119,7 @@ Parser.prototype = Object.create(null, {
       if (this.buffer == null)
         debug('%s: closed', desc);
       else
-        debug('%s: offset=%s buffer="%s"" remaining=%d', desc, this.offset,
+        debug('%s: offset=%s buffer={%s} remaining=%d', desc, this.offset,
               this.buffer.slice(this.offset, this.offset + 30),
               (this.buffer.length - this.offset));
     }
@@ -128,6 +148,9 @@ Parser.prototype = Object.create(null, {
       // length: The minimum amount to read before returning.  If EOF is reached
       //         before this amount can be added, false is returned.  If not
       //         provided 1 is used.
+      //
+      // Obviously we hope the stream will return a large amount of data instead
+      // of just `length` but we don't have control over this.
 
       if (!this.source)
         return false;
@@ -143,7 +166,7 @@ Parser.prototype = Object.create(null, {
           return true;
       }
 
-      this.close();
+      this._closeStream();
 
       return false;
     }
@@ -154,6 +177,11 @@ Parser.prototype = Object.create(null, {
       // Reads until there is at least `needed` characters in the buffer.  Returns
       // true if it was able to read the requested number of characters and false if
       // the stream ended before.
+      //
+      // Be careful!  If there is already `needed` characters then it returns
+      // immediately without reading more.  If you are *scanning* forward in a
+      // buffer instead of removing data you'll need to ask for this.remaining
+      // *plus* the extra you need.
 
       // debug('_ensure: %d', needed)
 
@@ -223,11 +251,12 @@ Parser.prototype = Object.create(null, {
 
   skipPast: {
     value: function* skipPast(text) {
-      var b = this.buffer;
       var i = this.offset;
       var c = text[0];
 
       while (true) {
+        var b = this.buffer;
+
         for (; i <= b.length - text.length; i++) {
           if (b[i] === c && (b.slice(i, i+text.length) === text)) {
             this.offset = i + text.length;
@@ -249,7 +278,7 @@ Parser.prototype = Object.create(null, {
         this.close();
 
       if (this.buffer === null)
-        return undefined;
+        return null;
 
       this._normalizeBuffer();
 
@@ -476,11 +505,12 @@ Parser.prototype = Object.create(null, {
 
       this._dump('scanFor', chars);
 
-      var b = this.buffer;
       var i = this.offset;
 
       while (true) {
-        for (; i < b.length; i++)
+        var b = this.buffer;
+
+        for (var c = b.length; i < c; i++)
           if (chars.indexOf(b[i]) !== -1) {
             this.offset = i;
             return true;
@@ -494,22 +524,33 @@ Parser.prototype = Object.create(null, {
 
   _readString: {
     value: function* _readString() {
+      // Returns the quoted string at the beginning of the buffer.  (If
+      // Javascript had *development-only* assertions like every other
+      // programming language on earth, we'd assert that there is a quote here.)
+      //
+      // The next character is either a double or single quote.  Scan forward to
+      // find the closing quote.  If we see a backslash, skip the character
+      // after it, which could be a quote: "ignore \"these\" quotes"
+
       this._dump('_readString');
       var quote = this.buffer[this.offset];
       var escaped = false;
 
       var start = ++this.offset;
 
-      var b = this.buffer;
       var i = start;
 
       while (true) {
+        var b = this.buffer;
+        // (Don't move this out of the while loop.  this.buffer is an immutable
+        // string so it gets *replaced* by this._ensure below.)
+
         for (; i < b.length; i++) {
           var ch = b[i];
           if (ch === quote && !escaped) {
             this.offset = i+1;
             var s = this.buffer.slice(start, i);
-            this._dump('_readString: offset=' + this.offset + ' string="' + s + '"');
+            this._dump('_readString: "' + s + '"');
             return s;
           }
 
@@ -520,7 +561,8 @@ Parser.prototype = Object.create(null, {
           }
         }
 
-        if (!(yield this._ensure(1)))
+
+        if (!(yield this._ensure(this.remaining + 1)))
           this._throwExpected('End quote');
       }
     }
@@ -552,7 +594,7 @@ function fromCodePoint () {
       codePoint > 0x10FFFF ||       // not a valid Unicode code point
       floor(codePoint) != codePoint // not an integer
     ) {
-      throw RangeError('Invalid code point: ' + codePoint);
+      throw new RangeError('Invalid code point: ' + codePoint);
     }
     if (codePoint <= 0xFFFF) { // BMP code point
       codeUnits.push(codePoint);

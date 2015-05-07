@@ -17,12 +17,12 @@ var co = require('co');
 //       var got;
 //       for (var i = 0; i < 300; i++) {
 //         got = yield parser.read();
-//         if (got === undefined)
+//         if (got === null)
 //           break;
 //         console.log('%j', got);
 //       }
 //
-//       if (got !== undefined)
+//       if (got !== null)
 //         console.log('Not complete!');
 //
 //     }).then(function() {
@@ -68,7 +68,7 @@ describe('basic', function() {
       { type: 'text', text: ' Post-text.     ' },
       { type: 'elementEnd', tag: 'SecondElement' },
       { type: 'elementEnd', tag: 'DocumentElement' },
-      undefined
+      null
     ];
 
     co(function*() {
@@ -82,12 +82,12 @@ describe('basic', function() {
 
         var got = yield parser.read();
 
-        if (expected === undefined && got === undefined)
+        if (expected === null && got === null)
           break;
 
         assert.deepEqual(expected, got);
       }
-      assert.equal(expected, undefined, 'Did not complete');
+      assert.equal(expected, null, 'Did not complete');
 
     }).then(function() {
       done();
