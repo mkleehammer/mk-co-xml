@@ -1,0 +1,23 @@
+{
+  "name": "mk-co-xml",
+  "version": "1.0.0",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/mkleehammer/mk-co-xml.git"
+  },
+  "description": "A co-based XML pull stream",
+  "main": "index.js",
+  "dependencies": {
+    "co-read": "^0.1.1",
+    "debug": "^2.1.3"
+  },
+  "scripts": {
+    "test": "mocha --harmony",
+    "test-text": "mocha --harmony --reporter tap"
+  },
+  "author": "michael@kleehammer.com",
+  "license": "MIT",
+  "devDependencies": {
+    "co": "^4.5.4"
+  }
+}
