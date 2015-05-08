@@ -15,20 +15,23 @@ function* main() {
     .version('1.0.0')
     .usage('[options] file')
     .option('-v --verbose', 'print more', increaseVerbosity, 0)
+    .option('--max [max]', 'stop after max records', parseInt, 0)
     .parse(process.argv);
 
+  var filename = program.args[0];
   if (program.args.length !== 1) {
     program.help();
     console.log('\Pass one and only one filename');
     process.exit(1);
   }
 
-  var fqn = path.join(__dirname, program.args[0]);
+  var fqn = path.join(__dirname, filename);
 
   var reader = new Parser();
   reader.readFile(fqn);
 
   var count = 0;
+  var maxCount = program.max || 9999999;
 
   var got;
   while (true) {
@@ -36,8 +39,13 @@ function* main() {
     if (!got)
       break;
 
+    count += 1;
+    if (count > maxCount) {
+      console.log('--max reached');
+      break;
+    }
+
     if (program.verbose === 1) {
-      count += 1;
       if ((count % 100) === 0)
         console.log(count);
     } else if (program.verbose > 1) {
@@ -45,7 +53,7 @@ function* main() {
     }
   }
 
-  if (got !== undefined)
+  if (got != null)
     console.log('Not complete!');
 }
 

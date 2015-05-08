@@ -58,6 +58,8 @@ Parser.prototype = Object.create(null, {
     value: function _closeStream() {
 
       if (this.source) {
+        // this._dump('_closeStream closing');
+
         // The source may have autoclosed so ignore errors.
         var methods = ['end', 'close', 'destroy'];
         for (var i = 0; i < methods.length; i++) {
@@ -74,6 +76,7 @@ Parser.prototype = Object.create(null, {
 
   close: {
     value: function close() {
+      // this._dump('close');
       this._closeStream();
 
       this.name   = null;
@@ -84,7 +87,7 @@ Parser.prototype = Object.create(null, {
 
   readString: {
     value: function(name, s) {
-      console.assert(arguments.length == 2, 'Forgot the name parameter to readString?');
+      // console.assert(arguments.length == 2, 'Forgot the name parameter to readString?');
 
       this.name = name;
       this.source = null;
@@ -119,9 +122,11 @@ Parser.prototype = Object.create(null, {
       if (this.buffer == null)
         debug('%s: closed', desc);
       else
-        debug('%s: offset=%s buffer={%s} remaining=%d', desc, this.offset,
+        debug('%s: offset=%s buffer={%s} remaining=%d source=%s', desc, this.offset,
               this.buffer.slice(this.offset, this.offset + 30),
-              (this.buffer.length - this.offset));
+              (this.buffer.length - this.offset),
+              (this.source != null)
+             );
     }
   },
 
@@ -157,7 +162,7 @@ Parser.prototype = Object.create(null, {
 
       var totalLength = this.buffer.length + (length || 1);
 
-      debug('_bufferMore: length=%d buffer=%s total=%s', length, this.buffer.length, totalLength);
+      // debug('_bufferMore: length=%d buffer=%s total=%s', length, this.buffer.length, totalLength);
 
       var text;
       while ((text = yield read(this.source)) != null) {
@@ -211,7 +216,7 @@ Parser.prototype = Object.create(null, {
       // middle of a string, we'll manually skip whitespace.  An isspace would be
       // handy too.
 
-      this._dump('_skipWhitespace');
+      // this._dump('_skipWhitespace');
 
       while (true) {
         // debug('_skipWhitespace: TOP offset=%s, length=%s', this.offset, this.buffer.length);
@@ -244,7 +249,7 @@ Parser.prototype = Object.create(null, {
         return false;
 
       var b = (this.buffer[this.offset] === text[0] && this.buffer.slice(this.offset, this.offset + text.length) === text);
-      this._dump('lookingAt "' + text + '" = ' + b);
+      // this._dump('lookingAt "' + text + '" = ' + b);
       return b;
     }
   },
@@ -274,15 +279,7 @@ Parser.prototype = Object.create(null, {
     value: function* read() {
       // Returns the next SAX event or undefined when finished.
 
-      if (this.buffer && this.offset === this.buffer.length)
-        this.close();
-
-      if (this.buffer === null)
-        return null;
-
-      this._normalizeBuffer();
-
-      this._dump('top of read');
+      // this._dump('top of read');
 
       if (this.closeTag) {
         var item = { type: 'elementEnd', tag: this.closeTag };
@@ -290,10 +287,19 @@ Parser.prototype = Object.create(null, {
         return item;
       }
 
-      // while (true) {
-      for (let i = 0; i < 10; i++) {
+      if (this.remaining === 0) {
+        if (!(yield this._bufferMore(1))) {
+          this.close();
+          return null;
+        }
+      }
+
+      this._normalizeBuffer();
+
+      while (true) {
+        // for (let i = 0; i < 10; i++) {
         if (this.buffer == null)
-          return undefined;
+          return null;
 
         if (!(yield this.lookingAt('<')))
           return yield* this.readTextNode();
@@ -317,7 +323,7 @@ Parser.prototype = Object.create(null, {
 
   parseElementStart: {
     value: function* parseElementStart() {
-      this._dump('parseElementStart');
+      // this._dump('parseElementStart');
 
       this._normalizeBuffer();
 
@@ -340,7 +346,7 @@ Parser.prototype = Object.create(null, {
           throw new Error('Premature EOF in tag "<' + item.tag);
 
         if (yield this.lookingAt('/>')) {
-          this._dump('endTag');
+          // this._dump('endTag');
 
           this.closeTag = item.tag;
           return item;
@@ -359,7 +365,7 @@ Parser.prototype = Object.create(null, {
 
   parseCData: {
     value: function* parseCData() {
-      this._dump('parseCData');
+      // this._dump('parseCData');
 
       this.offset += CDATA_START.length;
 
@@ -376,7 +382,7 @@ Parser.prototype = Object.create(null, {
 
   parseElementEnd: {
     value: function* parseElementEnd() {
-      this._dump('readElementEnd');
+      // this._dump('readElementEnd');
 
       this.offset += 2; // skip </
 
@@ -396,7 +402,7 @@ Parser.prototype = Object.create(null, {
 
   _parseAttribute: {
     value: function* _parseAttribute() {
-      this._dump('_parseAttribute');
+      // this._dump('_parseAttribute');
 
       var name = yield this.readToken();
       yield this._skipWhitespace();
@@ -429,7 +435,7 @@ Parser.prototype = Object.create(null, {
       // Reads until the next tag.  If an entity is found, it is turned into a
       // Javascript character so that an entire string is returned.
 
-      this._dump('readTextNode');
+      // this._dump('readTextNode');
 
       var text = '';
 
@@ -450,7 +456,7 @@ Parser.prototype = Object.create(null, {
       }
 
       if (text === '')
-        return undefined;
+        return null;
 
       return { type: 'text', text: text };
     }
@@ -458,7 +464,8 @@ Parser.prototype = Object.create(null, {
 
   readReference: {
     value: function* readReference() {
-      console.assert(this.buffer[this.offset] === '&');
+      // this._dump('readReference');
+      // console.assert(this.buffer[this.offset] === '&');
 
       if (!(yield this._ensure(4)))
         this._throwError('Invalid or incomplete entity reference');
@@ -503,7 +510,7 @@ Parser.prototype = Object.create(null, {
       // Scans forward until one of the characters in `chars` is found.  Returns
       // true if one of the characters was found and false if EOF was hit.
 
-      this._dump('scanFor', chars);
+      // this._dump('scanFor');
 
       var i = this.offset;
 
@@ -532,7 +539,7 @@ Parser.prototype = Object.create(null, {
       // find the closing quote.  If we see a backslash, skip the character
       // after it, which could be a quote: "ignore \"these\" quotes"
 
-      this._dump('_readString');
+      // this._dump('_readString');
       var quote = this.buffer[this.offset];
       var escaped = false;
 
@@ -543,14 +550,14 @@ Parser.prototype = Object.create(null, {
       while (true) {
         var b = this.buffer;
         // (Don't move this out of the while loop.  this.buffer is an immutable
-        // string so it gets *replaced* by this._ensure below.)
+        // string so it gets *replaced* by this._bufferMore below.)
 
         for (; i < b.length; i++) {
           var ch = b[i];
           if (ch === quote && !escaped) {
             this.offset = i+1;
             var s = this.buffer.slice(start, i);
-            this._dump('_readString: "' + s + '"');
+            // this._dump('_readString: "' + s + '"');
             return s;
           }
 
@@ -561,8 +568,7 @@ Parser.prototype = Object.create(null, {
           }
         }
 
-
-        if (!(yield this._ensure(this.remaining + 1)))
+        if (!(yield this._bufferMore(1)))
           this._throwExpected('End quote');
       }
     }
