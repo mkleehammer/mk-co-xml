@@ -4,95 +4,170 @@ var assert = require("assert");
 var xmls = require('../index.js');
 var co = require('co');
 
-// describe('interactive', function() {
-//   // This is just used for interative testing and is not part of the test suite.
-//   it.only('should parse this file too!', function(done) {
-//     var path = require('path');
-//
-//     co(function*() {
-//       var parser = new xmls.Parser();
-//
-//       parser.readFile(path.join(__dirname, '../tmp/test.xml'));
-//
-//       var got;
-//       for (var i = 0; i < 300; i++) {
-//         got = yield parser.read();
-//         if (got === null)
-//           break;
-//         console.log('%j', got);
-//       }
-//
-//       if (got !== null)
-//         console.log('Not complete!');
-//
-//     }).then(function() {
-//       done();
-//     }, function(error) {
-//       done(error);
-//     });
-//   });
-// });
+describe('from stream', function() {
 
-describe('basic', function() {
-  it('should parse from a string', function(done) {
+  function test(xml, expect, done) {
+    var Readable = require('stream').Readable;
 
-    // This is from Wikipedia's SAX article.  I changed the numeric reference to
-    // a normal ASCII character though.
+    var rs = new Readable();
 
-    var saxExample = (
-      '<?xml version="1.0" encoding="UTF-8"?>' +
-        '<DocumentElement param="value">' +
-        '     <FirstElement>' +
-        '         &#x30; Some Text' +
-        '     </FirstElement>' +
-        '     <?some_pi some_attr="some_value"?>' +
-        '     <SecondElement param2="something">' +
-        '         Pre-Text <Inline>Inlined text</Inline> Post-text.' +
-        '     </SecondElement>' +
-        '</DocumentElement>');
-
-    var results = [
-      { type: 'elementStart', tag: 'DocumentElement', attributes: { param: 'value' } },
-      { type: 'text', text: '     ' },
-      { type: 'elementStart', tag: 'FirstElement', attributes: {} },
-      { type: 'text', text: '         0 Some Text     ' },
-      { type: 'elementEnd', tag: 'FirstElement' },
-      { type: 'text', text: '     ' },
-      // We eat the processing directive in this version.
-      { type: 'text', text: '     ' },
-      { type: 'elementStart', tag: 'SecondElement', attributes: { param2: 'something' } },
-      { type: 'text', text: '         Pre-Text ' },
-      { type: 'elementStart', tag: 'Inline', attributes: {} },
-      { type: 'text', text: 'Inlined text' },
-      { type: 'elementEnd', tag: 'Inline' },
-      { type: 'text', text: ' Post-text.     ' },
-      { type: 'elementEnd', tag: 'SecondElement' },
-      { type: 'elementEnd', tag: 'DocumentElement' },
-      null
-    ];
+    rs._read = function () {
+      // Use a custom function instead of push so Readable doesn't buffer it all
+      // and give it to us in one chunk.
+      if (xml.length)
+        rs.push(xml.shift());
+      else
+        rs.push(null);
+    };
 
     co(function*() {
       var parser = new xmls.Parser();
 
-      parser.readString('SAX-Example', saxExample);
+      parser.readStream("xml", rs);
 
       var expected;
-      for (var i = 0; i < results.length; i++) {
-        expected = results[i];
-
+      for (var i = 0; i < expect.length; i++) {
+        expected = expect[i];
         var got = yield parser.read();
-
         if (expected === null && got === null)
           break;
-
         assert.deepEqual(expected, got);
       }
       assert.equal(expected, null, 'Did not complete');
-
     }).then(function() {
       done();
     }, function(error) {
       done(error);
     });
+  }
+
+
+  it('should allow text node at end', function(done) {
+    // If we reach the end-of-buffer while parsing a text node we don't know if
+    // we should continue, so we stop since there might be more data in the
+    // buffer.
+
+    var xml = ["<a>testing</a>end"];
+    var expect = [
+      { type: 'start', tag: 'a', attrs: {} },
+      { type: 'text', text: 'testing' },
+      { type: 'end', tag: 'a' },
+      { type: 'text', text: 'end' },
+      null
+    ];
+
+    test(xml, expect, done);
+  });
+
+  it('should handle splits', function(done) {
+    // If we reach the end-of-buffer while parsing a text node we don't know if
+    // we should continue, so we stop since there might be more data in the
+    // buffer.
+
+    var xml = ["<a>te", "st", "ing</", "a>end"];
+    var expect = [
+      { type: 'start', tag: 'a', attrs: {} },
+      { type: 'text', text: 'testing' },
+      { type: 'end', tag: 'a' },
+      { type: 'text', text: 'end' },
+      null
+    ];
+
+    test(xml, expect, done);
+  });
+
+});
+
+describe('from string', function() {
+
+  function test(xml, expect, done) {
+    co(function*() {
+      var parser = new xmls.Parser();
+
+      parser.readString('xml', xml);
+
+      var expected;
+      for (var i = 0; i < expect.length; i++) {
+        expected = expect[i];
+        var got = yield parser.read();
+        if (expected === null && got === null)
+          break;
+        assert.deepEqual(expected, got);
+      }
+      assert.equal(expected, null, 'Did not complete');
+
+    }).then(function() {
+    }, function(error) {
+      throw error;
+    });
+  }
+
+  it('should allow text node at end', function() {
+
+    var xml = "<a>testing</a>end";
+    var expect = [
+      { type: 'start', tag: 'a', attrs: {} },
+      { type: 'text', text: 'testing' },
+      { type: 'end', tag: 'a', attrs: {} },
+      { type: 'text', text: 'end' },
+      null
+    ];
+
+    test(xml, expect);
+
+  });
+
+  it('should parse from a string', function() {
+
+    // This is from Wikipedia's SAX article.  I changed the numeric reference to
+    // a normal ASCII character though.
+
+    var xml = (
+      '<?xml version="1.0" encoding="UTF-8"?>' +
+      '<DocumentElement param="value">' +
+      '     <FirstElement>' +
+      '         &#x30; Some Text' +
+      '     </FirstElement>' +
+      '     <?some_pi some_attr="some_value"?>' +
+      '     <SecondElement param2="something">' +
+      '         Pre-Text <Inline>Inlined text</Inline> Post-text.' +
+      '     </SecondElement>' +
+      '</DocumentElement>');
+
+    var expect = [
+      { type: 'start', tag: 'DocumentElement', attrs: { param: 'value' } },
+      { type: 'text', text: '     ' },
+      { type: 'start', tag: 'FirstElement', attrs: {} },
+      { type: 'text', text: '         0 Some Text     ' },
+      { type: 'end', tag: 'FirstElement' },
+      { type: 'text', text: '     ' },
+      // We eat the processing directive in this version.
+      { type: 'text', text: '     ' },
+      { type: 'start', tag: 'SecondElement', attrs: { param2: 'something' } },
+      { type: 'text', text: '         Pre-Text ' },
+      { type: 'start', tag: 'Inline', attrs: {} },
+      { type: 'text', text: 'Inlined text' },
+      { type: 'end', tag: 'Inline' },
+      { type: 'text', text: ' Post-text.     ' },
+      { type: 'end', tag: 'SecondElement' },
+      { type: 'end', tag: 'DocumentElement' },
+      null
+    ];
+
+    test(xml, expect);
+  });
+
+  it('should handle CDATA', function() {
+    var xml = "<test>" +
+        "<![CDATA[<sender>John Smith</sender>]]>" +
+        "</test>";
+
+    var expect = [
+      { type: 'start', tag: 'test', attrs: {} },
+      { type: 'cdata', data: '<sender>John Smith</sender>' },
+      { type: 'end', tag: 'test'}
+    ];
+
+    test(xml, expect);
   });
 });

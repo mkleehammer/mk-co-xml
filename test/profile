@@ -1,0 +1,4 @@
+#!/bin/bash
+
+rm isolate-*.log
+node --harmony --prof read.js $*

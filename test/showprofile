@@ -1,0 +1,3 @@
+#!/bin/bash
+
+node-tick-processor --js --mac isolate-*.log

@@ -31,7 +31,7 @@ function* main() {
   reader.readFile(fqn);
 
   var count = 0;
-  var maxCount = program.max || 9999999;
+  var maxCount = program.max || 9999999999;
 
   var got;
   while (true) {
