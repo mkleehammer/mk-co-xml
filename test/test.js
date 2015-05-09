@@ -97,27 +97,50 @@ describe('from string', function() {
       assert.equal(expected, null, 'Did not complete');
 
     }).then(function() {
+      done();
     }, function(error) {
-      throw error;
+      done(error);
     });
   }
 
-  it('should allow text node at end', function() {
+  it('should not choke on backslash', function(done) {
+    var xml = '<e a="test\\">ing</e>';
+    var expect = [
+      { type: 'start', tag: 'e', attrs: { a: 'test\\' } },
+      { type: 'text', text: 'ing' },
+      { type: 'end', tag: 'e' },
+      null
+    ];
+
+    test(xml, expect, done);
+  });
+
+  it('should handle quote refs', function(done) {
+    var xml = '<e a="test&quot;ing"></e>';
+    var expect = [
+      { type: 'start', tag: 'e', attrs: { a: 'test"ing' } },
+      { type: 'end', tag: 'e' },
+      null
+    ];
+
+    test(xml, expect, done);
+  });
+
+  it('should allow text node at end', function(done) {
 
     var xml = "<a>testing</a>end";
     var expect = [
       { type: 'start', tag: 'a', attrs: {} },
       { type: 'text', text: 'testing' },
-      { type: 'end', tag: 'a', attrs: {} },
+      { type: 'end', tag: 'a' },
       { type: 'text', text: 'end' },
       null
     ];
 
-    test(xml, expect);
-
+    test(xml, expect, done);
   });
 
-  it('should parse from a string', function() {
+  it('should parse from a string', function(done) {
 
     // This is from Wikipedia's SAX article.  I changed the numeric reference to
     // a normal ASCII character though.
@@ -154,10 +177,10 @@ describe('from string', function() {
       null
     ];
 
-    test(xml, expect);
+    test(xml, expect, done);
   });
 
-  it('should handle CDATA', function() {
+  it('should handle CDATA', function(done) {
     var xml = "<test>" +
         "<![CDATA[<sender>John Smith</sender>]]>" +
         "</test>";
@@ -165,9 +188,10 @@ describe('from string', function() {
     var expect = [
       { type: 'start', tag: 'test', attrs: {} },
       { type: 'cdata', data: '<sender>John Smith</sender>' },
-      { type: 'end', tag: 'test'}
+      { type: 'end', tag: 'test'},
+      null
     ];
 
-    test(xml, expect);
+    test(xml, expect, done);
   });
 });

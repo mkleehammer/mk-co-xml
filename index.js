@@ -49,11 +49,6 @@ var util = require('util');
 var debug = require('debug')('mk-co-xml');
 var read = require('co-read');
 
-var WSCHARS = ' \t\n\r\v';
-var SPECIAL = '\\>="\'&;' + WSCHARS;
-
-// var TEXTSPECIAL = '<&';
-
 var CDATA_START = '<![CDATA[';
 var CDATA_END   = ']]>';
 
@@ -226,10 +221,12 @@ Parser.prototype = Object.create(null, {
   },
 
   _matches: {
-    value: function _matches(s) {
+    value: function _matches(s, i) {
       // Determines if the next characters in the buffer match `s`.  Returns
       // true or false.  If everything matches up to the end of the stream,
       // EndOfBufferError is thrown.
+      //
+      // i: Optional index to use instead of `this.offset`.
 
       // REVIEW: I don't perform a length check and throw EndOfBufferError early
       // since we can tell if it is not a match without having all characters.
@@ -244,8 +241,8 @@ Parser.prototype = Object.create(null, {
       var lb = this.buffer.length;
       var ls = s.length;
 
-      var ib = this.offset;     // index into b
-      var is = 0;               // index into s
+      var ib = (i != null) ? i : this.offset; // index into b
+      var is = 0;                             // index into s
 
       for (; is < ls; ib++, is++) {
         if (ib == lb)
@@ -406,7 +403,9 @@ Parser.prototype = Object.create(null, {
         var stringStart = i;
         var stringStop  = afterString(b, i);
 
-        attrs[b.slice(nameStart, nameStop)] = b.slice(stringStart+1, stringStop-1);
+        var str = b.slice(stringStart+1, stringStop-1);
+        str = replaceEntityRefs(str);
+        attrs[b.slice(nameStart, nameStop)] = str;
 
         i = afterWhitespace(b, stringStop);
       }
@@ -435,7 +434,7 @@ Parser.prototype = Object.create(null, {
       var l = b.length;
 
       for (var i = this.offset + CDATA_START.length; i < l; i++) {
-        if (b[i] === ']' && this._matches(CDATA_END)) {
+        if (b[i] === ']' && this._matches(CDATA_END, i)) {
           this.events.push({ type: 'cdata', data: b.slice(this.offset + CDATA_START.length, i) });
           this.offset = i + CDATA_END.length;
           return;
@@ -647,26 +646,14 @@ function afterString(b, i) {
   // ASSERT(typeof i === 'number' && i <= b.length, 'i=%s', i);
   // ASSERT(b[i] === '"' || b[i] === "'", 'expected quote: {}', b.slice(i, i+30));
 
-  var quote = b[i];
-  if (quote !== '"' && quote !== "'")
-    throw new Error('Expected quoted attribute value: ' + b.slice(i, i+30));
+  var quote = b[i++];
 
   var l = b.length;
-  var escaped = false;
 
-  i++;
   for (; i < l; i++) {
     var ch = b[i];
-    if (ch === quote && !escaped)
+    if (ch === quote)
       return i + 1; // we want "after"
-
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-
-    if (ch === '\\')
-      escaped = true;
   }
 
   throw new EndOfBufferError();
